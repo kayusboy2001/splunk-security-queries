@@ -539,3 +539,344 @@ sourcetype=WinEventLog:Security EventCode=4624 OR EventCode=4625
 | search Logon_Type=10
 ```
 **Explanation**: RDP (Remote Desktop Protocol) uses Logon_Type=10 in Windows Security logs. This query monitors both successful (4624) and failed (4625) logon events with RDP logon type to track remote desktop access, which attackers commonly use for lateral movement after gaining initial access to a network.
+
+### 67. Identify Command and Control Traffic
+```spl
+sourcetype=network_traffic
+| stats count by dest_ip
+| where count > 500 AND NOT dest_ip IN (192.168.0.0/16, 10.0.0.0/8)
+```
+**Explanation**: Command and control (C2) traffic involves regular communication between compromised systems and external attacker servers. This query counts connections to external destination IPs (excluding internal networks) and identifies destinations receiving more than 500 connections, which might indicate malware beaconing or C2 communication channels.
+
+### 68. Identify PowerShell Empire Activity
+```spl
+sourcetype=WinEventLog:Windows PowerShell
+| search (powershell.exe net.webclient).downloadstring) -nop -w hidden -ep bypass -c)|(iex(new-object
+```
+**Explanation**: PowerShell Empire is a post-exploitation framework that uses specific PowerShell command patterns. This query searches PowerShell logs for characteristic Empire command syntax including web client downloads, hidden window execution, and bypass execution policies that are commonly used by this attack framework.
+
+### 69. Identify Ransomware File Activity
+```spl
+sourcetype=access_* action=file_write
+| search file_path="*.crypt" OR file_path="*.locky"
+```
+**Explanation**: Different ransomware families use distinctive file extensions when encrypting victim files. This query monitors file write operations and searches for files with extensions commonly used by specific ransomware variants (.crypt, .locky), providing early detection of active ransomware encryption processes.
+
+### 70. Identify Malicious Traffic from Specific IP
+```spl
+sourcetype=network_traffic src_ip=10.1.1.1
+| stats count by dest_ip
+| where count > 10
+```
+**Explanation**: When a specific IP is suspected of being compromised, this query tracks all network traffic originating from that IP. It counts connections to different destinations and identifies those with more than 10 connections, helping understand the scope of potential compromise and identify additional affected systems.
+
+### 71. Identify Brute Force on Web Applications
+```spl
+sourcetype=access_* method=POST uri_path="*.php"
+| stats count by src_ip
+| where count >= 50
+```
+**Explanation**: Web applications are frequent targets for brute force attacks against login forms. This query counts POST requests (commonly used for form submissions) to PHP applications by source IP and identifies IPs making 50 or more requests, indicating potential brute force attacks against web application authentication mechanisms.
+
+### 72. Identify Unauthorized Access to Sensitive Files
+```spl
+sourcetype=access_* action=file_read
+| search file_path="*/etc/shadow" OR file_path="*/etc/passwd"
+```
+**Explanation**: The /etc/shadow and /etc/passwd files contain critical authentication information on Linux systems. This query monitors file read operations targeting these sensitive files, which could indicate password cracking attempts, privilege escalation efforts, or unauthorized access to user credential information.
+
+### 73. Identify Lateral Movement via SMB Shares
+```spl
+sourcetype=WinEventLog:Security EventCode=5140
+| search Object_Name="*\\ADMIN$" OR Object_Name="*\\C$"
+```
+**Explanation**: Windows administrative shares (ADMIN$ and C$) are commonly used for lateral movement. This query monitors Security log EventCode 5140 (network share access) for connections to these administrative shares, which might indicate legitimate administrative activity or attackers moving laterally through the network.
+
+### 74. Identify SSH Brute Force (Invalid Attempts)
+```spl
+sourcetype=linux_secure action=invalid
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: Linux secure logs record SSH authentication attempts marked as "invalid" when attackers use non-existent usernames or malformed authentication data. This query counts invalid attempts by source IP to identify IPs making 10 or more invalid SSH attempts, indicating reconnaissance or brute force attacks.
+
+### 75. Identify Phishing Attacks via Form Submission
+```spl
+sourcetype=access_* method=POST uri_path="*.php"
+| search form_action="http://www.evilsite.com/login.php" AND (input_password=* OR input_password=*)
+```
+**Explanation**: Phishing attacks often involve forms that submit credentials to malicious sites. This query examines POST requests to PHP pages and searches for form actions pointing to suspicious domains combined with password input fields, indicating potential credential harvesting attempts through phishing forms.
+
+### 76. Identify Command Injection on Web Servers
+```spl
+sourcetype=access_* method=POST uri_path="*.php"
+| rex field=_raw "(?<command>cat|ls|dir)\s+(?<argument>[^;]+)"
+| where isnotnull(command) AND isnotnull(argument)
+```
+**Explanation**: Command injection attacks attempt to execute system commands through web applications. This query examines POST requests to PHP applications and uses regex to extract common system commands (cat, ls, dir) with arguments, indicating potential command injection attempts where attackers try to execute operating system commands through web interfaces.
+
+### 77. Identify Lateral Movement via WinRM
+```spl
+sourcetype=WinEventLog:Microsoft-Windows-WinRM/Operational EventCode=146
+| search "winrs: client" AND "is starting a command" AND NOT user="NETWORK SERVICE" AND NOT user="LocalSystem"
+```
+**Explanation**: Windows Remote Management (WinRM) allows remote command execution and is used for lateral movement. This query monitors WinRM operational logs for EventCode 146 (command execution) and searches for winrs client sessions starting commands, excluding system accounts to focus on potential attacker activity.
+
+### 78. Identify Brute Force on WordPress Login
+```spl
+sourcetype=access_* method=POST uri_path="*/wp-login.php"
+| stats count by src_ip
+| where count >= 20
+```
+**Explanation**: WordPress sites are common targets for brute force attacks. This query specifically monitors POST requests to the WordPress login page (wp-login.php) and counts attempts by source IP. IPs making 20 or more login attempts likely represent automated brute force attacks against WordPress installations.
+
+### 79. Identify Windows Privilege Escalation
+```spl
+sourcetype=WinEventLog:Security EventCode=4688
+| search (New_Process_Name="*\\runas.exe" OR New_Process_Name="*\\psexec.exe") AND NOT User="SYSTEM"
+```
+**Explanation**: This query monitors Windows process creation events (EventCode 4688) for execution of privilege escalation tools like runas.exe and psexec.exe by non-system users. These tools are commonly used by attackers to execute commands with elevated privileges after gaining initial access to a system.
+
+### 80. Identify Beaconing Activity from Compromised Host
+```spl
+sourcetype=network_traffic src_ip=10.1.1.1
+| stats count by dest_port
+| where count > 1000
+```
+**Explanation**: Malware often "beacons" to command and control servers at regular intervals. This query analyzes network traffic from a suspected compromised host and counts connections by destination port. Ports receiving more than 1000 connections might indicate beaconing behavior or other persistent malware communication patterns.
+
+### 81. Identify SSH Failed Login Attempts
+```spl
+sourcetype=linux_secure action=failed
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: This query monitors Linux secure logs for failed SSH authentication attempts and counts them by source IP. IPs with 10 or more failed attempts likely represent brute force attacks or compromised systems attempting to gain unauthorized SSH access using invalid credentials.
+
+### 82. Identify Data Exfiltration via HTTP Downloads
+```spl
+sourcetype=access_* action=file_download
+| search uri_path="*.zip" OR uri_path="*.rar" OR uri_path="*.tgz" OR uri_path="*.tar.gz"
+```
+**Explanation**: Data exfiltration often involves downloading compressed archives containing sensitive information. This query monitors file download activities and searches for common archive formats (zip, rar, tgz, tar.gz) that might contain exfiltrated data being transferred out of the organization.
+
+### 83. Identify Lateral Movement via WMI
+```spl
+sourcetype=WinEventLog:Security EventCode=5861
+| search (Operation="ExecQuery" AND QueryLanguage="WQL") OR (Operation="MethodCall" AND NOT MethodName="GetSecurityDescriptor" AND NOT MethodName="SetSecurityDescriptor")
+```
+**Explanation**: Windows Management Instrumentation (WMI) is commonly abused for lateral movement. This query monitors WMI activity through Security log EventCode 5861, focusing on query executions and method calls while excluding common legitimate operations to identify potential WMI-based lateral movement attempts.
+
+### 84. Identify MSSQL Server Brute Force
+```spl
+sourcetype=mssql_access action=failed
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: Microsoft SQL Server is a common target for brute force attacks. This query monitors MSSQL access logs for failed authentication attempts and counts them by source IP. IPs with 10 or more failed attempts likely represent brute force attacks attempting to compromise database server credentials.
+
+### 85. Identify PowerShell Privilege Escalation
+```spl
+sourcetype=WinEventLog:Microsoft-Windows-PowerShell/Operational EventCode=400
+| search "PowerShell pipeline execution details" AND NOT "UserPrincipalName=SYSTEM@*" AND NOT "UserPrincipalName=NETWORK SERVICE@*"
+```
+**Explanation**: This query monitors PowerShell operational logs for pipeline execution events (EventCode 400) while excluding system and network service accounts. Non-system PowerShell execution might indicate privilege escalation attempts or lateral movement using PowerShell by attackers or compromised user accounts.
+
+### 86. Identify Email Account Brute Force
+```spl
+sourcetype=exchangeps
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: Exchange PowerShell logs (exchangeps) can indicate email account access attempts. This query counts events by source IP and identifies IPs with 10 or more events, which might represent brute force attacks against email accounts or automated tools attempting to compromise Exchange services.
+
+### 87. Identify Successful RDP Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=4624
+| search Logon_Type=10
+```
+**Explanation**: This query monitors successful Windows logon events (EventCode 4624) with Logon_Type=10, which indicates RDP connections. Successful RDP logons can represent legitimate remote access or attackers successfully using stolen credentials for lateral movement through the network.
+
+### 88. Identify Successful MSSQL Logins
+```spl
+sourcetype=mssql_access action=success
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: While failed MSSQL attempts indicate brute force attacks, successful logins from the same IPs might indicate successful compromise. This query counts successful MSSQL authentications by source IP to identify IPs with 10 or more successful logins, which could represent compromised accounts or successful brute force attacks.
+
+### 89. Identify Data Exfiltration via FTP
+```spl
+sourcetype=access_* action=file_upload
+| search uri_path="*/ftp" OR uri_path="*/sftp"
+```
+**Explanation**: FTP and SFTP services can be used for data exfiltration. This query monitors file upload activities and searches for uploads to FTP or SFTP paths, which might indicate sensitive data being transferred to external FTP servers or unauthorized file sharing through FTP protocols.
+
+### 90. Identify Successful SMB Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=5140
+| search Object_Name="*\\ADMIN$" OR Object_Name="*\\C$"
+```
+**Explanation**: This query monitors successful SMB share access events (EventCode 5140) to administrative shares (ADMIN$ and C$). Successful access to these shares might indicate legitimate administrative activity or successful lateral movement by attackers who have obtained administrative credentials.
+
+### 91. Identify RDP Brute Force Attacks
+```spl
+sourcetype=WinEventLog:Security EventCode=4625
+| search Logon_Type=10 AND Status="0xC000006D"
+```
+**Explanation**: This query focuses on failed RDP logon attempts (EventCode 4625) with Logon_Type=10 and Status="0xC000006D" (bad username or password). This specific combination indicates failed RDP authentication attempts, commonly seen in brute force attacks against Remote Desktop services.
+
+### 92. Identify Web Application Brute Force (Extended)
+```spl
+sourcetype=access_* method=POST
+| stats count by src_ip, uri_path
+| where count >= 100
+```
+**Explanation**: This extended web application brute force detection counts POST requests by both source IP and URI path combinations. This provides more granular detection by identifying IPs making 100 or more POST requests to specific application paths, indicating targeted brute force attacks against particular web application endpoints.
+
+### 93. Identify Remote Registry Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=4663
+| search Object_Name="*\\REGISTRY\\MACHINE\\SOFTWARE" AND NOT User="SYSTEM" AND NOT User="NETWORK SERVICE" AND NOT User="LOCAL SERVICE"
+```
+**Explanation**: The Windows Registry can be accessed remotely for lateral movement and persistence. This query monitors registry access events (EventCode 4663) to the SOFTWARE hive by non-system users, which might indicate attackers accessing or modifying registry settings for persistence or lateral movement purposes.
+
+### 94. Identify Linux Privilege Escalation (Sudo)
+```spl
+sourcetype=linux_secure "sudo:"
+```
+**Explanation**: This simplified query searches Linux secure logs for any sudo command usage. Sudo commands allow privilege escalation on Linux systems, and monitoring all sudo activity helps identify both legitimate administrative actions and potential privilege escalation attempts by attackers.
+
+### 95. Identify Data Exfiltration via DNS
+```spl
+sourcetype=dns
+| search query_type=A AND query !="*.google.com" AND query !="*.facebook.com" AND query !="*.twitter.com" AND query !="*.microsoft.com"
+```
+**Explanation**: DNS exfiltration involves encoding data in DNS queries to bypass firewalls. This query monitors DNS A record queries while excluding common legitimate domains (google.com, facebook.com, etc.) to focus on potentially suspicious DNS queries that might contain encoded exfiltrated data.
+
+### 96. Identify Failed SMB Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=5152
+| search Object_Name="*\\ADMIN$" OR Object_Name="*\\C$" AND Status="0xC000006D"
+```
+**Explanation**: This query monitors failed SMB share access attempts to administrative shares with Status="0xC000006D" (access denied). Failed access to ADMIN$ and C$ shares might indicate attackers attempting lateral movement with invalid credentials or insufficient privileges.
+
+### 97. Identify MSSQL Failed Login Attempts
+```spl
+sourcetype=mssql_access action=failed
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: This is a duplicate of query #84, monitoring failed MSSQL authentication attempts to identify brute force attacks against SQL Server databases. IPs with 10 or more failed attempts likely represent automated attack tools or compromised systems attempting to gain database access.
+
+### 98. Identify Data Exfiltration via SMTP
+```spl
+sourcetype=smtp action=send_message
+| search recipient!="*@gmail.com" AND recipient!="*@yahoo.com" AND recipient!="*@hotmail.com" AND recipient!="*@aol.com"
+```
+**Explanation**: Data exfiltration can occur through email to unusual recipients. This query monitors SMTP message sending and excludes common email providers to focus on messages sent to potentially suspicious or unusual email addresses that might represent data exfiltration attempts.
+
+### 99. Identify NetBIOS Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=5719
+| search "No Domain Controller is available" OR "This computer was not able to set up a secure session with a domain controller"
+```
+**Explanation**: NetBIOS-related errors can indicate lateral movement attempts or network reconnaissance. This query searches for specific NetBIOS error messages (EventCode 5719) that might occur when attackers attempt to enumerate or access domain resources without proper authentication.
+
+### 100. Identify Telnet Server Brute Force
+```spl
+sourcetype=access_* method=POST uri_path="*/telnet"
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: Although less common today, Telnet services can still be targets for brute force attacks. This query monitors POST requests to Telnet-related paths and counts attempts by source IP to identify potential brute force attacks against Telnet services or web-based Telnet interfaces.
+
+### 101. Identify FTP Data Exfiltration
+```spl
+sourcetype=ftp action=putfile
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: FTP put operations can indicate data exfiltration to external FTP servers. This query monitors FTP logs for file upload (putfile) actions and counts them by source IP. IPs performing 10 or more file uploads might indicate data exfiltration activities or unauthorized file transfers.
+
+### 102. Identify Failed WMI Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=5605
+| search Object_Name="*\\ROOT\\CIMV2" AND NOT User="SYSTEM"
+```
+**Explanation**: WMI failures can indicate unsuccessful lateral movement attempts. This query monitors WMI-related security events (EventCode 5605) for failed access to the ROOT\\CIMV2 namespace by non-system users, which might represent failed attempts to use WMI for lateral movement or system reconnaissance.
+
+### 103. Identify SSH Server Brute Force (Alternative)
+```spl
+sourcetype=access_* method=POST uri_path="*/ssh"
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: This alternative SSH brute force detection monitors POST requests to SSH-related paths, which might represent web-based SSH interfaces or SSH tunneling attempts. IPs making 10 or more such requests could indicate brute force attacks against SSH services through web interfaces.
+
+### 104. Identify Windows Service Configuration Changes
+```spl
+sourcetype=WinEventLog:Security EventCode=4697 OR EventCode=7045
+| search Image_Path="*\\System32\\*" AND NOT User="SYSTEM"
+```
+**Explanation**: Windows service modifications can indicate persistence mechanisms. This query monitors service installation (EventCode 4697) and service creation (EventCode 7045) events for services installed in System32 by non-system users, which might represent malware installing persistent services or attackers establishing persistence.
+
+### 105. Identify SNMP Brute Force Attacks
+```spl
+sourcetype=snmptrap
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: SNMP (Simple Network Management Protocol) can be targeted for reconnaissance and brute force attacks. This query monitors SNMP trap logs and counts events by source IP to identify IPs generating 10 or more SNMP events, which might indicate SNMP community string brute forcing or network device reconnaissance.
+
+### 106. Identify HTTP Upload Data Exfiltration
+```spl
+sourcetype=access_* method=POST uri_path="/upload"
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: Web upload endpoints can be used for data exfiltration. This query monitors POST requests to upload paths and counts them by source IP. IPs making 10 or more upload requests might indicate data exfiltration through web upload forms or compromised upload functionality.
+
+### 107. Identify Failed DCOM Lateral Movement
+```spl
+sourcetype=WinEventLog:Security EventCode=10009
+| search "DCOM was unable to communicate with the computer" AND NOT User="SYSTEM"
+```
+**Explanation**: DCOM (Distributed Component Object Model) can be used for lateral movement in Windows environments. This query monitors DCOM communication failures (EventCode 10009) by non-system users, which might indicate failed attempts to use DCOM for lateral movement or remote code execution.
+
+### 108. Identify MySQL Server Brute Force
+```spl
+sourcetype=mysql_access action=failed
+| stats count by src_ip
+| where count >= 10
+```
+**Explanation**: MySQL databases are common targets for brute force attacks. This query monitors MySQL access logs for failed authentication attempts and counts them by source IP. IPs with 10 or more failed attempts likely represent brute force attacks attempting to compromise MySQL database credentials.
+
+### 109. Identify Scheduled Task Privilege Escalation
+```spl
+sourcetype=WinEventLog:Security EventCode=4698
+| search "Task Scheduler service found a misconfiguration" AND NOT User="SYSTEM"
+```
+**Explanation**: Windows scheduled tasks can be abused for privilege escalation and persistence. This query monitors scheduled task creation events (EventCode 4698) for misconfiguration errors by non-system users, which might indicate attackers attempting to create malicious scheduled tasks for persistence or privilege escalation.
+
+### 110. Identify HTTPS Data Exfiltration
+```spl
+sourcetype=ssl method=POST
+| stats count by src_ip, dest_ip
+| where count >= 10
+```
+**Explanation**: HTTPS traffic can be used to exfiltrate data while evading detection through encryption. This query monitors SSL/TLS logs for POST requests (commonly used for data uploads) and counts them by source and destination IP pairs. High POST counts might indicate data exfiltration over encrypted HTTPS connections.
+
+---
+
+## Summary
+
+These 110 Splunk security detection queries provide comprehensive coverage of common attack patterns and security threats. Each query uses specific Splunk commands and logic designed to identify suspicious activities while minimizing false positives. When implementing these queries:
+
+1. **Customize thresholds**: Adjust count thresholds based on your environment's normal activity levels
+2. **Test thoroughly**: Validate queries against known good and bad data before production deployment
+3. **Monitor performance**: Some complex queries may impact Splunk performance on large datasets
+4. **Regular updates**: Update queries as new attack techniques emerge and your environment changes
+5. **Correlation**: Combine multiple query results for more accurate threat detection and reduced false positives
+
+Remember that these queries serve as starting points and should be customized for your specific environment, threat landscape, and security requirements.
